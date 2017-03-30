@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>face-centered cubic cellular automaton</title>
+</head>
+<body>
+
+<div id="container"></div>
+<script src="../external/three.js"></script>
+
+<script id="vertexShader" type="x-shader/x-vertex">
+  precision highp float;
+
+  uniform mat4 modelViewMatrix;
+  uniform mat4 projectionMatrix;
+  uniform float objScale;
+
+  attribute vec3 position;
+  attribute vec3 color;
+  attribute vec3 offset;
+
+  varying vec3 vColor;
+  varying vec3 vPosition;
+  varying float vAmbient;
+
+  void main() {
+
+    vPosition = offset + (position * objScale);
+    vColor = color;
+    vAmbient = 0.4;
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4( vPosition, 1.0);
+
+  }
+</script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+  precision highp float;
+
+  varying float vAmbient;
+  varying vec3 vPosition;
+  varying vec3 vColor;
+
+  void main() {
+
+    vec3 fdx = dFdx( vPosition );
+    vec3 fdy = dFdy( vPosition );
+
+    vec3 normal = normalize( cross( fdx, fdy ) );
+    float diffuse = max(0.0, dot( normal, vec3( 0.5, 0.0, .867 ) ));
+    float totalColor = min( diffuse + vAmbient, 1.0 );
+    vec3 rgbColor = vColor * totalColor;
+    gl_FragColor = vec4(rgbColor, 1.0);
+    // gl_FragColor = vec4(0.8, 0.4, 0.4, 1.0 );
+
+  }
+
+</script>
+
+<script>
+// if ( !Detector.webgl ) Detector.addGetWebGLMessage();
+
+  var container, stats;
+  var camera, scene, renderer;
+  var rhombMesh;
+
+  var cameraLookAt;
+  var cameraUp;
+
+  var material;
+
+  var GRID_BASE_SIZE = 32;
+  var GRID_X_SIZE = 2*GRID_BASE_SIZE;
+  var GRID_Y_SIZE = 2*GRID_BASE_SIZE;
+  var GRID_Z_SIZE = GRID_BASE_SIZE;
+  var Y_OFFSET = GRID_X_SIZE;
+  var Z_OFFSET = Y_OFFSET*GRID_Y_SIZE;
+  var FULL_GRID_OFFSET = Z_OFFSET*GRID_Z_SIZE;
+
+  var NEIGHBOR_COUNT=12;
+  var neighborList;
+  var cellArrays;
+  var rulesArray;
+  var currentGridIdx;
+  var rhombOffsets;
+  var rhombColors;
+  var rhombGeometry;
+  var frameCount;
+
+  init();
+  animate();
+
+  function init () {
+    // Initialize the core CA stuff
+    // the baseline array is (2*base) x (2*base) x base; we create two of these (for ping-ponging between)
+    cellArrays = new Uint8Array(2*GRID_BASE_SIZE*2*GRID_BASE_SIZE*GRID_BASE_SIZE*2);
+    // initialize the grid randomly with a density of 10%
+    currentGridIdx = 0;
+    for (var xIdx = 0; xIdx < GRID_X_SIZE; xIdx++) {
+      for (var yIdx = 0; yIdx < GRID_Y_SIZE; yIdx++) {
+        for (var zIdx = 0; zIdx < GRID_Z_SIZE; zIdx++) {
+          if (Math.random() < 0.1) {
+            cellArrays[xIdx + yIdx*Y_OFFSET + zIdx*Z_OFFSET + currentGridIdx*FULL_GRID_OFFSET] = 1;
+          }
+        }
+      }
+    }
+    // The 'rules array' is 13x2, representing the neighbor-count (0..12) and current state.
+    rulesArray = new Uint8Array((NEIGHBOR_COUNT+1)*2);
+    // An off cell with four, six or 7 neighbors is turned on
+    rulesArray[(NEIGHBOR_COUNT+1)*0+4] = 1;
+    rulesArray[(NEIGHBOR_COUNT+1)*0+6] = 1;
+    rulesArray[(NEIGHBOR_COUNT+1)*0+7] = 1;
+    // An on cell with four, 5 6 or 7 neighbors stays on
+    rulesArray[(NEIGHBOR_COUNT+1)*1+4] = 1;
+    rulesArray[(NEIGHBOR_COUNT+1)*1+5] = 1;
+    rulesArray[(NEIGHBOR_COUNT+1)*1+6] = 1;
+    rulesArray[(NEIGHBOR_COUNT+1)*1+7] = 1;
+
+    frameCount = 0;
+
+    // Initialize all the rendering bits and pieces
+    container = document.getElementById( 'container' );
+    camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 1, 1000 );
+    cameraLookAt = new THREE.Vector3(0, 0, 0);
+    cameraUp = new THREE.Vector3(0, 1, 0);
+
+    renderer = new THREE.WebGLRenderer();
+
+    scene = new THREE.Scene();
+
+    rhombGeometry = new THREE.InstancedBufferGeometry();
+    var rhombPoints = new THREE.BufferAttribute( new Float32Array( [
+      -0.5, -0.5, -0.5,
+       0.5, -0.5, -0.5,
+      -0.5,  0.5, -0.5,
+       0.5,  0.5, -0.5,
+      -0.5, -0.5,  0.5,
+       0.5, -0.5,  0.5,
+      -0.5,  0.5,  0.5,
+       0.5,  0.5,  0.5,
+      -1.0,    0,    0,
+       1.0,    0,    0,
+         0, -1.0,    0,
+         0,  1.0,    0,
+         0,    0, -1.0,
+         0,    0,  1.0
+    ] ), 3 );
+    var rhombIndices = new THREE.BufferAttribute( new Uint16Array( [
+      0, 12, 1,
+      1, 10, 0,
+      1, 12, 3,
+      3,  9, 1,
+      3, 12, 2,
+      2, 11, 3,
+      2, 12, 0,
+      0,  8, 2,
+      7, 11, 6,
+      6, 13, 7,
+      6,  8, 4,
+      4, 13, 6,
+      4, 10, 5,
+      5, 13, 4,
+      5,  9, 7,
+      7, 13, 5,
+      0, 10, 4,
+      4,  8, 0,
+      1,  9, 5,
+      5, 10, 1,
+      2,  8, 6,
+      6, 11, 2,
+      3, 11, 7,
+      7,  9, 3
+    ] ), 1);
+
+    var rhombColor = new THREE.Color(0xff3060);
+//    var rhombColorsArray = new Float32Array( 13*3 );
+//    rhombColorsArray[0] = 1.0; rhombColorsArray[1] = 0.2; rhombColorsArray[2] = 0.5;
+//    for (idx = 1; idx < 13; idx++) {
+//      rhombColorsArray[3*idx] = 0.2;
+//      rhombColorsArray[3*idx+1] = 0.5+0.5*(idx % 2);
+//      rhombColorsArray[3*idx+2] = (idx/2)/6.0;
+//    };
+    var rhombColorsArray = new Float32Array( GRID_X_SIZE*GRID_Y_SIZE*GRID_Z_SIZE*3 );
+    rhombColors = new THREE.InstancedBufferAttribute(rhombColorsArray, 3).setDynamic(true);
+
+    neighborList = new Int32Array( [
+       0,  1,  0,
+       0,  1, -1,
+       0, -1,  0,
+       0, -1,  1,
+       1,  0,  0,
+       1,  0, -1,
+      -1,  0,  0,
+      -1,  0,  1,
+       1, -1,  0,
+      -1,  1,  0,
+       1,  1, -1,
+      -1, -1,  1
+    ] );
+    var rhombOffsetsArray = new Float32Array( GRID_X_SIZE*GRID_Y_SIZE*GRID_Z_SIZE*3 );
+
+    rhombOffsets = new THREE.InstancedBufferAttribute(rhombOffsetsArray, 3).setDynamic(true);
+
+    rhombGeometry.addAttribute('position', rhombPoints);
+    rhombGeometry.setIndex( rhombIndices );
+    rhombGeometry.addAttribute('color', rhombColors);
+    rhombGeometry.addAttribute('offset', rhombOffsets);
+
+    material = new THREE.RawShaderMaterial( {
+      vertexShader: document.getElementById( 'vertexShader' ).textContent,
+      fragmentShader: document.getElementById( 'fragmentShader' ).textContent,
+      transparent: false,
+//      side: THREE.DoubleSide,
+      extensions: {
+        derivatives: true
+      },
+      uniforms: {
+        objScale : { value: 1.0 }
+      }
+    } );
+
+    rhombMesh = new THREE.Mesh(rhombGeometry, material);
+    scene.add(rhombMesh);
+
+    renderer.setClearColor( 0x101010 );
+    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setSize( window.innerWidth, window.innerHeight );
+    container.appendChild( renderer.domElement );
+    window.addEventListener( 'resize', onWindowResize, false );
+    window.addEventListener( 'keypress', onKeyPress, false );
+  }
+
+  function onWindowResize (event) {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+
+    renderer.setSize( window.innerWidth, window.innerHeight );
+  }
+
+  function onKeyPress (event) {
+    if (event.charCode == 32) {
+      updateGrid();
+    }
+  }
+
+  function animate () {
+    requestAnimationFrame(animate);
+    frameCount++;
+    if (frameCount % 5 == 0) {
+      updateGrid();
+    }
+    render();
+  }
+
+  function render () {
+    buildSceneFromGrid();
+    var time = Date.now() * .001;
+    camera.position.set(2*GRID_X_SIZE*Math.cos(time/2.0), GRID_X_SIZE, 2*GRID_X_SIZE*Math.sin(time/2.0));
+    //camera.position.set(8*Math.cos(time), 4, 8*Math.sin(time));
+    camera.up = cameraUp;
+    camera.lookAt(cameraLookAt);
+    camera.updateProjectionMatrix();
+    // material.uniforms.objScale.value = Math.abs(Math.cos(Math.PI * time/2.0));
+    material.uniforms.objScale.value = 0.75;
+
+    renderer.render(scene,camera);
+  }
+
+  function updateGrid () {
+    var nextGridIdx = 1-currentGridIdx;
+    for (var zIdx = 0; zIdx < GRID_Z_SIZE; zIdx++) {
+      for (var yIdx = 0; yIdx < GRID_Y_SIZE; yIdx++) {
+        for (var xIdx = 0; xIdx < GRID_X_SIZE; xIdx++) {
+          var neighborSum = 0;
+          for (var neighborIdx = 0; neighborIdx < NEIGHBOR_COUNT; neighborIdx++) {
+            var tmpX = (xIdx + neighborList[3*neighborIdx  ] + GRID_X_SIZE) % GRID_X_SIZE;
+            var tmpY = (yIdx + neighborList[3*neighborIdx+1] + GRID_Y_SIZE) % GRID_Y_SIZE;
+            var tmpZ = (zIdx + neighborList[3*neighborIdx+2] + GRID_Z_SIZE) % GRID_Z_SIZE;
+            neighborSum += cellArrays[tmpX + tmpY*Y_OFFSET + tmpZ*Z_OFFSET + currentGridIdx*FULL_GRID_OFFSET];
+          }
+          currentValue = cellArrays[xIdx + yIdx*Y_OFFSET + zIdx*Z_OFFSET + currentGridIdx*FULL_GRID_OFFSET];
+          cellArrays[xIdx + yIdx*Y_OFFSET + zIdx*Z_OFFSET + nextGridIdx*FULL_GRID_OFFSET]
+           = rulesArray[currentValue*(NEIGHBOR_COUNT+1)+neighborSum];
+        }
+      }
+    }
+    currentGridIdx = nextGridIdx;
+  }
+
+  function buildSceneFromGrid() {
+    var totalCellCount = 0;
+    for (zIdx = 0; zIdx < GRID_Z_SIZE; zIdx++) {
+      for (yIdx = 0; yIdx < GRID_Y_SIZE; yIdx++) {
+        for (xIdx = 0; xIdx < GRID_X_SIZE; xIdx++) {
+          var cellColor = cellArrays[xIdx + yIdx*Y_OFFSET + zIdx*Z_OFFSET + currentGridIdx*FULL_GRID_OFFSET];
+          if (cellColor > 0) {
+            var worldX = xIdx - (GRID_X_SIZE/2);
+            var worldY = yIdx - (GRID_Y_SIZE/2);
+            var worldZ = ((2*zIdx+xIdx+yIdx)%(2*GRID_Z_SIZE))-GRID_Z_SIZE;
+            rhombOffsets.setXYZ(totalCellCount, worldX, worldY, worldZ);
+            rhombColors.setXYZ(totalCellCount, 1.0, 0.3, 0.3);
+            totalCellCount++;
+          }
+        }
+      }
+    }
+    rhombGeometry.maxInstancedCount = totalCellCount;
+    rhombOffsets.needsUpdate = true;
+    rhombColors.needsUpdate = true;
+  }
+
+</script>
+</body>
+</html>

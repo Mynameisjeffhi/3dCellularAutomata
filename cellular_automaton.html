@@ -15,25 +15,17 @@
 <!-- The cellular automaton class -->
 <script src="caSimulation.js"></script>
 
+<!-- The CA renderer class -->
+<script src="caRenderer.js"></script>
+
 <script>
 // if ( !Detector.webgl ) Detector.addGetWebGLMessage();
 
-  var container, stats;
-  var camera, scene, renderer;
-  var rhombMesh;
-
-  var cameraLookAt;
-  var cameraUp;
-
-  var material;
+  var container;
+  var caRenderer;
 
   var GRID_BASE_SIZE = 32;
   var cellArrays;
-
-  var rhombOffsets;
-  var rhombColors;
-  var rhombGeometry;
-  var frameCount;
 
   init();
   animate();
@@ -55,155 +47,38 @@
     cellArrays.setRule(1, 7, 1);
 
     // Initialize all the rendering bits and pieces
+    caRenderer = new CARenderClass(cellArrays);
+
     container = document.getElementById( 'container' );
-    camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 1, 1000 );
-    cameraLookAt = new THREE.Vector3(0, 0, 0);
-    cameraUp = new THREE.Vector3(0, 1, 0);
-    frameCount = 0;
+    container.appendChild( caRenderer.getDOMElement() );
 
-    renderer = new THREE.WebGLRenderer();
-
-    scene = new THREE.Scene();
-
-    rhombGeometry = new THREE.InstancedBufferGeometry();
-    var rhombPoints = new THREE.BufferAttribute( new Float32Array( [
-      -0.5, -0.5, -0.5,
-       0.5, -0.5, -0.5,
-      -0.5,  0.5, -0.5,
-       0.5,  0.5, -0.5,
-      -0.5, -0.5,  0.5,
-       0.5, -0.5,  0.5,
-      -0.5,  0.5,  0.5,
-       0.5,  0.5,  0.5,
-      -1.0,    0,    0,
-       1.0,    0,    0,
-         0, -1.0,    0,
-         0,  1.0,    0,
-         0,    0, -1.0,
-         0,    0,  1.0
-    ] ), 3 );
-    var rhombIndices = new THREE.BufferAttribute( new Uint16Array( [
-      0, 12, 1,
-      1, 10, 0,
-      1, 12, 3,
-      3,  9, 1,
-      3, 12, 2,
-      2, 11, 3,
-      2, 12, 0,
-      0,  8, 2,
-      7, 11, 6,
-      6, 13, 7,
-      6,  8, 4,
-      4, 13, 6,
-      4, 10, 5,
-      5, 13, 4,
-      5,  9, 7,
-      7, 13, 5,
-      0, 10, 4,
-      4,  8, 0,
-      1,  9, 5,
-      5, 10, 1,
-      2,  8, 6,
-      6, 11, 2,
-      3, 11, 7,
-      7,  9, 3
-    ] ), 1);
-
-    var rhombColor = new THREE.Color(0xff3060);
-    var rhombColorsArray = new Float32Array( GRID_BASE_SIZE*2*GRID_BASE_SIZE*2*GRID_BASE_SIZE*3 );
-    rhombColors = new THREE.InstancedBufferAttribute(rhombColorsArray, 3).setDynamic(true);
-
-    var rhombOffsetsArray = new Float32Array( GRID_BASE_SIZE*2*GRID_BASE_SIZE*2*GRID_BASE_SIZE*3 );
-
-    rhombOffsets = new THREE.InstancedBufferAttribute(rhombOffsetsArray, 3).setDynamic(true);
-
-    rhombGeometry.addAttribute('position', rhombPoints);
-    rhombGeometry.setIndex( rhombIndices );
-    rhombGeometry.addAttribute('color', rhombColors);
-    rhombGeometry.addAttribute('offset', rhombOffsets);
-
-    material = new THREE.RawShaderMaterial( {
-      vertexShader: cellVertexShader,
-      fragmentShader: cellFragmentShader,
-      transparent: false,
-      extensions: {
-        derivatives: true
-      },
-      uniforms: {
-        objScale : { value: 1.0 }
-      }
-    } );
-
-    rhombMesh = new THREE.Mesh(rhombGeometry, material);
-    scene.add(rhombMesh);
-
-    renderer.setClearColor( 0x101010 );
-    renderer.setPixelRatio( window.devicePixelRatio );
-    renderer.setSize( window.innerWidth, window.innerHeight );
-    container.appendChild( renderer.domElement );
     window.addEventListener( 'resize', onWindowResize, false );
     window.addEventListener( 'keypress', onKeyPress, false );
   }
 
   function onWindowResize (event) {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-
-    renderer.setSize( window.innerWidth, window.innerHeight );
+    caRenderer.onResize(window.innerWidth, window.innerHeight);
   }
 
   function onKeyPress (event) {
     if (event.charCode == 32) {
-      updateGrid();
+      cellArrays.updateGrid();
     }
   }
 
   function animate () {
     requestAnimationFrame(animate);
-    frameCount++;
-    if (frameCount % 5 == 0) {
-      cellArrays.updateGrid();
-    }
+    cellArrays.updateGrid();
     render();
   }
 
   function render () {
-    buildSceneFromGrid();
+    caRenderer.buildSceneFromGrid();
     var time = Date.now() * .001;
-    camera.position.set(4*GRID_BASE_SIZE*Math.cos(time/2.0), 2*GRID_BASE_SIZE, 4*GRID_BASE_SIZE*Math.sin(time/2.0));
-    //camera.position.set(8*Math.cos(time), 4, 8*Math.sin(time));
-    camera.up = cameraUp;
-    camera.lookAt(cameraLookAt);
-    camera.updateProjectionMatrix();
-    // material.uniforms.objScale.value = Math.abs(Math.cos(Math.PI * time/2.0));
-    material.uniforms.objScale.value = 0.75;
+    caRenderer.setCameraPosition(4*GRID_BASE_SIZE*Math.cos(time/2.0), 2*GRID_BASE_SIZE, 4*GRID_BASE_SIZE*Math.sin(time/2.0));
+    caRenderer.setObjectScale(0.75);
 
-    renderer.render(scene,camera);
-  }
-
-  function buildSceneFromGrid() {
-    var totalCellCount = 0;
-    gridXSize = cellArrays.size();
-    gridYSize = cellArrays.size();
-    gridZSize = cellArrays.size()/2;
-    for (zIdx = 0; zIdx < gridZSize; zIdx++) {
-      for (yIdx = 0; yIdx < gridYSize; yIdx++) {
-        for (xIdx = 0; xIdx < gridXSize; xIdx++) {
-          var cellColor = cellArrays.getValueAt(xIdx, yIdx, zIdx);
-          if (cellColor > 0) {
-            var worldX = xIdx - (gridXSize/2);
-            var worldY = yIdx - (gridYSize/2);
-            var worldZ = ((2*zIdx+xIdx+yIdx)%(2*gridZSize))-gridZSize;
-            rhombOffsets.setXYZ(totalCellCount, worldX, worldY, worldZ);
-            rhombColors.setXYZ(totalCellCount, 1.0, 0.3, 0.3);
-            totalCellCount++;
-          }
-        }
-      }
-    }
-    rhombGeometry.maxInstancedCount = totalCellCount;
-    rhombOffsets.needsUpdate = true;
-    rhombColors.needsUpdate = true;
+    caRenderer.renderScene();
   }
 
 </script>

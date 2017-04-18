@@ -1,10 +1,10 @@
 class CARenderClass {
-  constructor (cellularAutomaton) {
+  constructor (cellularAutomaton, containerElement) {
 
     this._cellularAutomaton = cellularAutomaton;
 
     // Initialize all the rendering bits and pieces
-    this._camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 1, 1000 );
+    this._camera = new THREE.PerspectiveCamera( 50, containerElement.clientWidth / containerElement.clientHeight, 1, 1000 );
     this._cameraLookAt = new THREE.Vector3(0, 0, 0);
     this._cameraUp = new THREE.Vector3(0, 1, 0);
 
@@ -87,7 +87,7 @@ class CARenderClass {
 
     this._renderer.setClearColor( 0x101010 );
     this._renderer.setPixelRatio( window.devicePixelRatio );
-    this._renderer.setSize( window.innerWidth, window.innerHeight );
+    this._renderer.setSize( containerElement.clientWidth, containerElement.clientHeight );
   }
 
   getDOMElement() {

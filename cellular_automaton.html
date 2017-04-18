@@ -3,10 +3,39 @@
 <head>
   <meta charset="utf-8">
   <title>face-centered cubic cellular automaton</title>
+  <style>
+    button#stepBack {
+      width: 25%
+    }
+    button#playPause {
+      width: 45%
+    }
+    button#playPause.pause > p#play {
+      display: inline
+    }
+    button#playPause.pause > p#pause {
+      display: none
+    }
+    button#playPause.play > p#play {
+      display: none
+    }
+    button#playPause.play > p#pause {
+      display: inline
+    }
+    button#stepForward {
+      width: 25%
+    }
+  </style>
 </head>
 <body>
-
-<div id="container"></div>
+<div id="leftContainer" style="width: 500px;">
+<div id="buttons">
+<button class="playbackButton" type="button" id="stepBack">Step Back</button>
+<button class="playbackButton" type="button" id="playPause"><p id="play">Play</p><p id="pause">Pause</p></button>
+<button class="playbackButton" type="button" id="stepForward">Step Forward</button>
+</div>
+<div id="container" style="width: 500px; height: 500px;"></div>
+</div>
 <script src="../external/three.js"></script>
 
 <!-- The vertex and fragment shaders -->
@@ -26,6 +55,8 @@
 
   var GRID_BASE_SIZE = 32;
   var cellArrays;
+
+  var containerElement;
 
   init();
   animate();
@@ -47,17 +78,21 @@
     cellArrays.setRule(1, 7, 1);
 
     // Initialize all the rendering bits and pieces
-    caRenderer = new CARenderClass(cellArrays);
-
-    container = document.getElementById( 'container' );
-    container.appendChild( caRenderer.getDOMElement() );
+    containerElement = document.getElementById( 'container' );
+    caRenderer = new CARenderClass(cellArrays, containerElement);
+    containerElement.appendChild( caRenderer.getDOMElement() );
 
     window.addEventListener( 'resize', onWindowResize, false );
     window.addEventListener( 'keypress', onKeyPress, false );
+
+    document.getElementById("stepBack").addEventListener( 'click', onBackClicked );
+    document.getElementById("stepForward").addEventListener( 'click', onForwardClicked );
+    document.getElementById("playPause").addEventListener( 'click', onPlayPauseClicked );
+    setPause();
   }
 
   function onWindowResize (event) {
-    caRenderer.onResize(window.innerWidth, window.innerHeight);
+    caRenderer.onResize(containerElement.clientWidth, containerElement.clientHeight);
   }
 
   function onKeyPress (event) {
@@ -66,9 +101,29 @@
     }
   }
 
+  function onBackClicked (event) {
+  }
+
+  function onForwardClicked (event) {
+    if (isPaused()) {
+      cellArrays.updateGrid();
+    }
+  }
+
+  function onPlayPauseClicked (event) {
+    var playPauseButton = document.getElementById("playPause");
+    if (isPaused()) {
+      setPlay();
+    } else {
+      setPause();
+    }
+  }
+
   function animate () {
     requestAnimationFrame(animate);
-    cellArrays.updateGrid();
+    if (!(isPaused())) {
+      cellArrays.updateGrid();
+    }
     render();
   }
 
@@ -79,6 +134,26 @@
     caRenderer.setObjectScale(0.75);
 
     caRenderer.renderScene();
+  }
+
+  function setPlay () {
+    var playPauseButton = document.getElementById("playPause");
+    playPauseButton.classList.remove("pause");
+    playPauseButton.classList.add("play");
+  }
+
+  function setPause () {
+    var playPauseButton = document.getElementById("playPause");
+    playPauseButton.classList.remove("play");
+    playPauseButton.classList.add("pause");
+  }
+
+  function isPaused () {
+    var playPauseButton = document.getElementById("playPause");
+    if (playPauseButton.classList.contains("pause")) {
+      return true;
+    }
+    return false;
   }
 
 </script>

@@ -35,6 +35,7 @@ class CellularAutomaton {
 
   // This sets the grid up randomly based on the provided density for 'on' cells.
   initializeRandomly (density) {
+    this._curGen = 0;
     this._curGenIdx = 0;
     this._oldestGenIdx = 0;
     for (var xIdx = 0; xIdx < this._gridDoubleSize; xIdx++) {
@@ -67,10 +68,20 @@ class CellularAutomaton {
         }
       }
     }
+    this._curGen++;
     this._curGenIdx = nextGenIdx;
     // Walk forward the oldest index in the buffer if we've hit it
     if (this._curGenIdx == this._oldestGenIdx)
       this._oldestGenIdx = (this._oldestGenIdx+1)%this._generationBufferSize;
+  }
+
+  // Steps backwards one generation
+  rewindGrid () {
+    if (this._curGenIdx != this._oldestGenIdx) {
+      var prevGenIdx = (this._curGenIdx+this._generationBufferSize-1) % this._generationBufferSize;
+      this._curGenIdx = prevGenIdx;
+      this._curGen--;
+    }
   }
 
   // Get the value of a cell (in the current generation)
@@ -81,6 +92,11 @@ class CellularAutomaton {
   // Set the value of a cell (in the current generation)
   setCell (x, y, z, value) {
     this._grids[this._curGenIdx][x+y*this._yOffset+z*this._zOffset] = value;
+  }
+
+  // Return the current generation for the CA
+  currentGeneration () {
+    return this._curGen;
   }
 
 }

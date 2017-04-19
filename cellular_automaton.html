@@ -35,6 +35,7 @@
 <button class="playbackButton" type="button" id="stepForward">Step Forward</button>
 </div>
 <div id="container" style="width: 500px; height: 500px;"></div>
+<div id="generationCount"></div>
 </div>
 <script src="../external/three.js"></script>
 
@@ -82,6 +83,8 @@
     caRenderer = new CARenderClass(cellArrays, containerElement);
     containerElement.appendChild( caRenderer.getDOMElement() );
 
+    document.getElementById("generationCount").innerHTML = "Generation: " + cellArrays.currentGeneration();
+
     window.addEventListener( 'resize', onWindowResize, false );
     window.addEventListener( 'keypress', onKeyPress, false );
 
@@ -98,15 +101,20 @@
   function onKeyPress (event) {
     if (event.charCode == 32) {
       cellArrays.updateGrid();
+      document.getElementById("generationCount").innerHTML = "Generation: " + cellArrays.currentGeneration();
     }
   }
 
   function onBackClicked (event) {
+    setPause();
+    cellArrays.rewindGrid();
+      document.getElementById("generationCount").innerHTML = "Generation: " + cellArrays.currentGeneration();
   }
 
   function onForwardClicked (event) {
     if (isPaused()) {
       cellArrays.updateGrid();
+      document.getElementById("generationCount").innerHTML = "Generation: " + cellArrays.currentGeneration();
     }
   }
 
@@ -123,6 +131,7 @@
     requestAnimationFrame(animate);
     if (!(isPaused())) {
       cellArrays.updateGrid();
+      document.getElementById("generationCount").innerHTML = "Generation: " + cellArrays.currentGeneration();
     }
     render();
   }

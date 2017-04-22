@@ -82,8 +82,8 @@ class CARenderClass {
       }
     } );
 
-    var rhombMesh = new THREE.Mesh(this._rhombGeometry, this._material);
-    this._scene.add(rhombMesh);
+    this._rhombMesh = new THREE.Mesh(this._rhombGeometry, this._material);
+    this._scene.add(this._rhombMesh);
 
     this._renderer.setClearColor( 0x101010 );
     this._renderer.setPixelRatio( window.devicePixelRatio );
@@ -115,6 +115,10 @@ class CARenderClass {
 
   setObjectScale(scale) {
     this._material.uniforms.objScale.value = scale;
+  }
+
+  setObjectOrientation(q) {
+    this._rhombMesh.setRotationFromQuaternion(q);
   }
 
   buildSceneFromGrid () {

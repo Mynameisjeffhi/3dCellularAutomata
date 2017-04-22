@@ -34,7 +34,7 @@
 <button class="playbackButton" type="button" id="playPause"><p id="play">Play</p><p id="pause">Pause</p></button>
 <button class="playbackButton" type="button" id="stepForward">Step Forward</button>
 </div>
-<div id="container" style="width: 500px; height: 500px;"></div>
+<div id="webGLContainer" style="width: 500px; height: 500px;"></div>
 <div id="generationCount"></div>
 </div>
 <script src="../external/three.js"></script>
@@ -58,6 +58,8 @@
   var cellArrays;
 
   var containerElement;
+  var lastMousePositionSphere;
+  var runningOrientationQuat;
 
   init();
   animate();
@@ -79,30 +81,28 @@
     cellArrays.setRule(1, 7, 1);
 
     // Initialize all the rendering bits and pieces
-    containerElement = document.getElementById( 'container' );
+    containerElement = document.getElementById( 'webGLContainer' );
     caRenderer = new CARenderClass(cellArrays, containerElement);
     containerElement.appendChild( caRenderer.getDOMElement() );
+    runningOrientationQuat = new THREE.Quaternion(0, 0, 0, 1.0);
 
     document.getElementById("generationCount").innerHTML = "Generation: " + cellArrays.currentGeneration();
 
+    // add the resize handler so our GL window can get itself to the correct size as needed
     window.addEventListener( 'resize', onWindowResize, false );
-    window.addEventListener( 'keypress', onKeyPress, false );
 
+    // add the click handlers on the buttons
     document.getElementById("stepBack").addEventListener( 'click', onBackClicked );
     document.getElementById("stepForward").addEventListener( 'click', onForwardClicked );
     document.getElementById("playPause").addEventListener( 'click', onPlayPauseClicked );
     setPause();
+
+    // add the click handler for the main window to do the arcball motion
+    containerElement.addEventListener( 'mousedown', onMouseDown );
   }
 
   function onWindowResize (event) {
     caRenderer.onResize(containerElement.clientWidth, containerElement.clientHeight);
-  }
-
-  function onKeyPress (event) {
-    if (event.charCode == 32) {
-      cellArrays.updateGrid();
-      document.getElementById("generationCount").innerHTML = "Generation: " + cellArrays.currentGeneration();
-    }
   }
 
   function onBackClicked (event) {
@@ -127,6 +127,59 @@
     }
   }
 
+  function onMouseDown (event) {
+    // add the event handler for mouseup
+    containerElement.addEventListener( 'mouseup', onMouseUp );
+    // and for mouseleave
+    containerElement.addEventListener( 'mouseleave', onMouseLeave );
+    // and one for mousemove
+    containerElement.addEventListener( 'mousemove', onMouseMove );
+    // and finally, note the current position of the mouse cursor
+    lastMousePositionSphere = spherePositionFrom2D(event);
+  }
+
+  function onMouseUp (event) {
+    handleUpOrLeave(event);
+  }
+
+  function onMouseLeave (event) {
+    handleUpOrLeave(event);
+  }
+
+  function handleUpOrLeave (event) {
+    // remove the handler for mousemove
+    containerElement.removeEventListener( 'mousemove', onMouseMove );
+    // and likewise the up and leave handlers
+    containerElement.removeEventListener( 'mouseup', onMouseUp );
+    containerElement.removeEventListener( 'mouseleave', onMouseLeave );
+  }
+
+  function onMouseMove (event) {
+    var mousePositionSphere = spherePositionFrom2D(event);
+    // figure out the 'shortest path' quaternion from the old position to the new
+    var quaternion = new THREE.Quaternion();
+    quaternion.setFromUnitVectors(lastMousePositionSphere, mousePositionSphere);
+    // now compose this with our existing rotation quaternion
+    runningOrientationQuat.premultiply(quaternion);
+    caRenderer.setObjectOrientation(runningOrientationQuat);
+    // finally, update our global mouse position for next time
+    lastMousePositionSphere = mousePositionSphere;
+  }
+
+  function spherePositionFrom2D (event) {
+    var boundingRect = event.target.getBoundingClientRect();
+    var offsetX = event.clientX - boundingRect.left;
+    var offsetY = event.clientY - boundingRect.top;
+    var worldX = 2.0 * offsetX / boundingRect.width - 1.0;
+    var worldY = 2.0 * offsetY / boundingRect.height - 1.0;
+    // Y needs to be flipped
+    worldY *= -1.0;
+    var worldZ = Math.sqrt(Math.max(0.0, 1.0-(worldX*worldX+worldY*worldY)));
+    var spherePos = new THREE.Vector3(worldX, worldY, worldZ);
+    spherePos.normalize();
+    return spherePos;
+  }
+
   function animate () {
     requestAnimationFrame(animate);
     if (!(isPaused())) {
@@ -139,7 +192,8 @@
   function render () {
     caRenderer.buildSceneFromGrid();
     var time = Date.now() * .001;
-    caRenderer.setCameraPosition(4*GRID_BASE_SIZE*Math.cos(time/2.0), 2*GRID_BASE_SIZE, 4*GRID_BASE_SIZE*Math.sin(time/2.0));
+    caRenderer.setCameraPosition(0, 0, 4*GRID_BASE_SIZE);
+    // caRenderer.setCameraPosition(4*GRID_BASE_SIZE*Math.cos(time/2.0), 2*GRID_BASE_SIZE, 4*GRID_BASE_SIZE*Math.sin(time/2.0));
     caRenderer.setObjectScale(0.75);
 
     caRenderer.renderScene();

@@ -5,36 +5,39 @@
   <title>face-centered cubic cellular automaton</title>
   <style>
     button#stepBack {
-      width: 25%
+      width: 25%;
+      height: 100%;
     }
     button#playPause {
-      width: 45%
+      width: 48%;
+      height: 100%;
     }
     button#playPause.pause > p#play {
-      display: inline
+      display: inline;
     }
     button#playPause.pause > p#pause {
-      display: none
+      display: none;
     }
     button#playPause.play > p#play {
-      display: none
+      display: none;
     }
     button#playPause.play > p#pause {
-      display: inline
+      display: inline;
     }
     button#stepForward {
-      width: 25%
+      width: 25%;
+      height: 100%;
     }
   </style>
 </head>
 <body>
 <div id="leftContainer" style="width: 500px;">
-<div id="buttons">
+<div id="webGLContainer" style="width: 500px; height: 500px;"></div>
+<div id="buttons" style="height: 40px;">
 <button class="playbackButton" type="button" id="stepBack">Step Back</button>
 <button class="playbackButton" type="button" id="playPause"><p id="play">Play</p><p id="pause">Pause</p></button>
 <button class="playbackButton" type="button" id="stepForward">Step Forward</button>
 </div>
-<div id="webGLContainer" style="width: 500px; height: 500px;"></div>
 <div id="generationCount"></div>
 </div>
 <script src="../external/three.js"></script>
@@ -160,6 +163,8 @@
       time: event.timeStamp
     };
     eventBuffer.add(mouseDownEventData);
+    // Stop our current spin
+    angularVelocity = 0;
     // and finally, note the current position of the mouse cursor
     lastMousePositionSphere = spherePositionFrom2D(event);
   }

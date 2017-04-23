@@ -48,6 +48,9 @@
 <!-- The CA renderer class -->
 <script src="caRenderer.js"></script>
 
+<!-- The ring buffer -->
+<script src="ringBuffer.js"></script>
+
 <script>
 // if ( !Detector.webgl ) Detector.addGetWebGLMessage();
 
@@ -60,6 +63,13 @@
   var containerElement;
   var lastMousePositionSphere;
   var runningOrientationQuat;
+
+  var angularVelocity;
+  var spinAxis;
+  var spinQuat;
+  var eventBuffer;
+
+  var lastRenderTime = null;
 
   init();
   animate();
@@ -85,6 +95,10 @@
     caRenderer = new CARenderClass(cellArrays, containerElement);
     containerElement.appendChild( caRenderer.getDOMElement() );
     runningOrientationQuat = new THREE.Quaternion(0, 0, 0, 1.0);
+
+    angularVelocity = 0;
+    spinAxis = new THREE.Vector3(0, 0, 1.0);
+    spinQuat = new THREE.Quaternion();
 
     document.getElementById("generationCount").innerHTML = "Generation: " + cellArrays.currentGeneration();
 
@@ -134,6 +148,18 @@
     containerElement.addEventListener( 'mouseleave', onMouseLeave );
     // and one for mousemove
     containerElement.addEventListener( 'mousemove', onMouseMove );
+    // Set up a new ring buffer for events - we shouldn't get more than 40 a second.
+    eventBuffer = new RingBuffer(40);
+    // push our new event into it
+    var boundingRect = event.target.getBoundingClientRect();
+    var offsetX = event.clientX - boundingRect.left;
+    var offsetY = event.clientY - boundingRect.top;
+    var mouseDownEventData = {
+      x: offsetX,
+      y: offsetY,
+      time: event.timeStamp
+    };
+    eventBuffer.add(mouseDownEventData);
     // and finally, note the current position of the mouse cursor
     lastMousePositionSphere = spherePositionFrom2D(event);
   }
@@ -152,16 +178,70 @@
     // and likewise the up and leave handlers
     containerElement.removeEventListener( 'mouseup', onMouseUp );
     containerElement.removeEventListener( 'mouseleave', onMouseLeave );
+
+    // Add one last item to the buffer for this event...
+    var boundingRect = event.target.getBoundingClientRect();
+    var offsetX = event.clientX - boundingRect.left;
+    var offsetY = event.clientY - boundingRect.top;
+    var mouseUpEventData = {
+      x: offsetX,
+      y: offsetY,
+      time: event.timeStamp
+    };
+    eventBuffer.add(mouseUpEventData);
+
+    // ...and now we trawl through the ring buffer getting a least-squares estimate of the last second's motion
+    var bufferSize = eventBuffer.count();
+    var accumT = 0, accumT2 = 0, accumX = 0, accumXT = 0, accumY = 0, accumYT = 0;;
+    var accumCount = 0;
+    for (var idx = 0; idx < bufferSize; idx++) {
+      var ringEvent = eventBuffer.getPrevious(idx);
+      var deltaT = (ringEvent.time - event.timeStamp) / 1000.0;
+      if (deltaT > 1.0)
+        break;
+      accumT += deltaT;
+      accumT2 += deltaT*deltaT;
+      accumX += ringEvent.x;
+      accumXT += deltaT*ringEvent.x;
+      accumY += ringEvent.y;
+      accumYT += deltaT*ringEvent.y;
+      accumCount += 1;
+    }
+    var dXdT = 0, dYdT = 0;
+    if (accumCount > 1) {
+      dXdT = (accumCount * accumXT - accumX * accumT) / (accumCount * accumT2 - accumT * accumT);
+      dYdT = (accumCount * accumYT - accumY * accumT) / (accumCount * accumT2 - accumT * accumT);
+    }
+    dXdT *= (Math.PI/boundingRect.width);
+    dYdT *= (Math.PI/boundingRect.height);
+    angularVelocity = Math.sqrt(dXdT*dXdT+dYdT*dYdT);
+    if (angularVelocity > 0.01) {
+      // note: this should be (-y, x, 0), but the 'y component' has to be flipped because of window axes
+      spinAxis.set(dYdT/angularVelocity, dXdT/angularVelocity, 0);
+    } else {
+      angularVelocity = 0.0;
+      spinAxis.set(0, 0, 1);
+    }
   }
 
   function onMouseMove (event) {
+    // push our event onto the ring buffer of events
+    var boundingRect = event.target.getBoundingClientRect();
+    var offsetX = event.clientX - boundingRect.left;
+    var offsetY = event.clientY - boundingRect.top;
+    var mouseMoveEventData = {
+      x: offsetX,
+      y: offsetY,
+      time: event.timeStamp
+    };
+    eventBuffer.add(mouseMoveEventData);
+
     var mousePositionSphere = spherePositionFrom2D(event);
     // figure out the 'shortest path' quaternion from the old position to the new
     var quaternion = new THREE.Quaternion();
     quaternion.setFromUnitVectors(lastMousePositionSphere, mousePositionSphere);
     // now compose this with our existing rotation quaternion
     runningOrientationQuat.premultiply(quaternion);
-    caRenderer.setObjectOrientation(runningOrientationQuat);
     // finally, update our global mouse position for next time
     lastMousePositionSphere = mousePositionSphere;
   }
@@ -180,21 +260,28 @@
     return spherePos;
   }
 
-  function animate () {
+  function animate (timestamp) {
+    if (!lastRenderTime) lastRenderTime = timestamp;
+    var deltaT = .001*(timestamp-lastRenderTime);
+    lastRenderTime = timestamp;
+
     requestAnimationFrame(animate);
     if (!(isPaused())) {
       cellArrays.updateGrid();
       document.getElementById("generationCount").innerHTML = "Generation: " + cellArrays.currentGeneration();
+    }
+    if (angularVelocity > 0.01) {
+      spinQuat.setFromAxisAngle(spinAxis, angularVelocity*deltaT);
+      runningOrientationQuat.premultiply(spinQuat);
     }
     render();
   }
 
   function render () {
     caRenderer.buildSceneFromGrid();
-    var time = Date.now() * .001;
     caRenderer.setCameraPosition(0, 0, 4*GRID_BASE_SIZE);
-    // caRenderer.setCameraPosition(4*GRID_BASE_SIZE*Math.cos(time/2.0), 2*GRID_BASE_SIZE, 4*GRID_BASE_SIZE*Math.sin(time/2.0));
     caRenderer.setObjectScale(0.75);
+    caRenderer.setObjectOrientation(runningOrientationQuat);
 
     caRenderer.renderScene();
   }
